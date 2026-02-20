@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import COLORS, CHAIN_COLOR_MAP
+from config import COLORS, CHAIN_COLOR_MAP, BLUECHIP_VAULTS, LONGTAIL_VAULTS
 
 
 def _format_usd(value):
@@ -122,6 +122,28 @@ def generate_html(report_data, charts, output_path="index.html"):
     daily_img = _img_to_base64(charts.get("daily_liquidations", ""))
     chain_img = _img_to_base64(charts.get("liq_by_chain", ""))
     bad_debt_img = _img_to_base64(charts.get("bad_debt", ""))
+
+    # Encode vault chart images as base64
+    vault_charts = charts.get("vault_charts", {})
+    vault_imgs = {}
+    for vault_name, vault_path in vault_charts.items():
+        vault_imgs[vault_name] = _img_to_base64(vault_path)
+
+    # Build vault liquidity HTML sections
+    def _build_vault_html(vaults, vault_imgs):
+        parts = []
+        for v in vaults:
+            name = v["name"]
+            img = vault_imgs.get(name, "")
+            if img:
+                parts.append(
+                    f'<img class="chart-img" src="{img}" '
+                    f'alt="{name} — Liquidity">'
+                )
+        return "\n".join(parts)
+
+    bluechip_vault_html = _build_vault_html(BLUECHIP_VAULTS, vault_imgs)
+    longtail_vault_html = _build_vault_html(LONGTAIL_VAULTS, vault_imgs)
 
     # Build tables
     chain_df = report_data.get("liquidations_by_chain", pd.DataFrame())
@@ -518,9 +540,25 @@ def generate_html(report_data, charts, output_path="index.html"):
         </table>
     </div>
 
-    <!-- Section 2: Bad Debt -->
+    <!-- Section 2: Vault Liquidity -->
     <div class="section">
-        <h2 class="section-header">2. Bad Debt Overview</h2>
+        <h2 class="section-header">2. Vault Liquidity</h2>
+        <p class="body-text">
+            Vault liquidity measures the percentage of deposited assets that remain available
+            for withdrawal. Higher liquidity indicates healthier vault conditions and sufficient
+            buffer for lender withdrawals even during periods of market stress.
+        </p>
+
+        <h3 style="color:{COLORS['text_white']};font-size:15px;margin:18px 0 8px;">Bluechip Vaults &mdash; Conservative risk profile, high liquidity expected</h3>
+        {bluechip_vault_html}
+
+        <h3 style="color:{COLORS['text_white']};font-size:15px;margin:24px 0 8px;">Long-Tail Vaults &mdash; Higher yield, relatively more risk exposure</h3>
+        {longtail_vault_html}
+    </div>
+
+    <!-- Section 3: Bad Debt -->
+    <div class="section">
+        <h2 class="section-header">3. Bad Debt Overview</h2>
         <p class="body-text">{bad_debt_section_text}</p>
 
         {"<img class='chart-img' src='" + bad_debt_img + "' alt='Bad Debt Overview'>" if bad_debt_img else ""}
@@ -540,9 +578,9 @@ def generate_html(report_data, charts, output_path="index.html"):
         </table>
     </div>
 
-    <!-- Section 3: Key Takeaways -->
+    <!-- Section 4: Key Takeaways -->
     <div class="section">
-        <h2 class="section-header">3. Key Takeaways</h2>
+        <h2 class="section-header">4. Key Takeaways</h2>
 
         <div class="takeaway">
             <strong>1. Infrastructure performed as designed.</strong>
@@ -560,6 +598,13 @@ def generate_html(report_data, charts, output_path="index.html"):
             <strong>3. Curator risk management effective.</strong>
             Market parameters set by curators ensured timely liquidations and prevented
             any losses to lenders across the network.
+        </div>
+
+        <div class="takeaway">
+            <strong>4. Vault liquidity remained healthy.</strong>
+            Both bluechip and long-tail vaults maintained sufficient available liquidity,
+            demonstrating that Morpho Vaults can sustain large withdrawals even during
+            volatile periods.
         </div>
     </div>
 
@@ -642,7 +687,11 @@ def main():
     from chart_generator import generate_all_charts
     charts = generate_all_charts(report_data, output_dir=output_dir)
     for name, path in charts.items():
-        print(f"  -> {name}: {os.path.basename(path)}")
+        if name == "vault_charts":
+            for vname, vpath in path.items():
+                print(f"  -> vault: {vname}: {os.path.basename(vpath)}")
+        else:
+            print(f"  -> {name}: {os.path.basename(path)}")
 
     # Step 3: Generate HTML
     print("\nGenerating HTML report...")

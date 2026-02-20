@@ -13,7 +13,23 @@ QUERY_IDS = {
     "bad_debt_stats_24h": 6024779,          # Bad Debt Statistics Past 24 Hours - Markets
     "unrealized_bad_debt": 6015286,         # Morpho Unrealized Bad Debt
     "bad_debt_events_24h": 6657604,         # Morpho Bad Debt Events - Past 24h
+    "vault_historical_liquidity": 6376752,  # Morpho Vault Historical Liquidity
 }
+
+# Vault definitions for the liquidity section
+# Bluechip (Conservative) vaults
+BLUECHIP_VAULTS = [
+    {"name": "Gauntlet USDC Prime", "vault_param": "Gauntlet USDC Prime - ethereum - 0xdd0f28e"},
+    {"name": "Steakhouse USDCV", "vault_param": "Steakhouse USDCV - ethereum - 0xbeef11a"},
+]
+
+# Long-tail (High-Yield) vaults
+LONGTAIL_VAULTS = [
+    {"name": "Gauntlet USDC RWA", "vault_param": "Gauntlet USDC RWA - ethereum - 0xa8875aa"},
+    {"name": "Smokehouse USDC", "vault_param": "Smokehouse USDC - ethereum - 0xbeefff2"},
+]
+
+ALL_TRACKED_VAULTS = BLUECHIP_VAULTS + LONGTAIL_VAULTS
 
 # Custom SQL queries for 7-day rolling data
 CUSTOM_QUERIES = {

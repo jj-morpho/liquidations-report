@@ -7,7 +7,7 @@ import time
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-from config import DUNE_API_KEY, QUERY_IDS, CUSTOM_QUERIES
+from config import DUNE_API_KEY, QUERY_IDS, CUSTOM_QUERIES, ALL_TRACKED_VAULTS, BLUECHIP_VAULTS, LONGTAIL_VAULTS
 
 
 class DuneDataFetcher:
@@ -69,6 +69,17 @@ class DuneDataFetcher:
 
         raise TimeoutError(f"Query did not complete within {max_wait}s")
 
+    def get_vault_liquidity(self, vault_param):
+        """Fetch vault historical liquidity data using query 6376752 with a vault_name param."""
+        query_id = QUERY_IDS["vault_historical_liquidity"]
+        url = f"{self.BASE_URL}/query/{query_id}/results"
+        params = {"params.vault_name": vault_param}
+        resp = requests.get(url, headers=self.headers, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        rows = data.get("result", {}).get("rows", [])
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+
     def fetch_all_report_data(self):
         """Fetch all data needed for the weekly risk report."""
         print("Fetching Morpho weekly risk report data from Dune...")
@@ -116,12 +127,26 @@ class DuneDataFetcher:
 
         # 5. Fetch existing dashboard queries for snapshot data
         for name, qid in QUERY_IDS.items():
+            if name == "vault_historical_liquidity":
+                continue  # handled separately per vault
             print(f"  -> Dashboard query: {name}...")
             try:
                 report_data[name] = self.get_latest_result(qid)
             except Exception as e:
                 print(f"     Warning: {e}")
                 report_data[name] = pd.DataFrame()
+
+        # 6. Fetch vault liquidity data for tracked vaults
+        report_data["vault_liquidity"] = {}
+        for vault in ALL_TRACKED_VAULTS:
+            print(f"  -> Vault liquidity: {vault['name']}...")
+            try:
+                report_data["vault_liquidity"][vault["name"]] = self.get_vault_liquidity(
+                    vault["vault_param"]
+                )
+            except Exception as e:
+                print(f"     Warning: {e}")
+                report_data["vault_liquidity"][vault["name"]] = pd.DataFrame()
 
         print("Data fetch complete.\n")
         return report_data
@@ -200,6 +225,31 @@ def generate_sample_data():
 
     # Bad debt events
     report_data["bad_debt_events_24h"] = pd.DataFrame()
+
+    # Vault liquidity sample data
+    report_data["vault_liquidity"] = {}
+
+    for vault in ALL_TRACKED_VAULTS:
+        rows = []
+        is_bluechip = vault in BLUECHIP_VAULTS
+        base_assets = random.uniform(80_000_000, 200_000_000) if is_bluechip else random.uniform(5_000_000, 30_000_000)
+        base_liquidity_pct = random.uniform(0.35, 0.55) if is_bluechip else random.uniform(0.15, 0.35)
+
+        for day_offset in range(14):
+            for hour in range(0, 24, 3):
+                ts = now - timedelta(days=13 - day_offset, hours=23 - hour)
+                noise = random.uniform(-0.05, 0.05)
+                assets = base_assets * (1 + random.uniform(-0.08, 0.08))
+                liq_pct = max(0.05, base_liquidity_pct + noise)
+                liq_usd = assets * liq_pct
+                rows.append({
+                    "hour": ts.strftime("%Y-%m-%d %H:%M:%S"),
+                    "chain": "ethereum",
+                    "liquidity_usd": liq_usd,
+                    "total_assets_usd": assets,
+                    "loan_asset": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                })
+        report_data["vault_liquidity"][vault["name"]] = pd.DataFrame(rows)
 
     return report_data
 

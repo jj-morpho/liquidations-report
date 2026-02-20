@@ -219,6 +219,64 @@ def create_bad_debt_summary_chart(bad_debt_df, unrealized_df, output_path="chart
     return output_path
 
 
+def create_vault_liquidity_chart(vault_name, vault_df, output_path="chart_vault_liq.png"):
+    """
+    Area chart showing vault liquidity % and total assets over time.
+    Mirrors the Dune query 6376752 visualization.
+    """
+    if vault_df.empty:
+        _create_no_data_chart(f"{vault_name} - Liquidity", output_path)
+        return output_path
+
+    df = vault_df.copy()
+    df["hour"] = pd.to_datetime(df["hour"])
+    df = df.sort_values("hour")
+    df["liquidity_pct"] = (df["liquidity_usd"] / df["total_assets_usd"].replace(0, 1)) * 100
+
+    fig, ax1 = plt.subplots(figsize=(10, 4))
+
+    # Left y-axis: Liquidity %
+    ax1.fill_between(df["hour"], df["liquidity_pct"], alpha=0.20, color=COLORS["blue_primary"])
+    ax1.plot(df["hour"], df["liquidity_pct"], color=COLORS["blue_primary"], linewidth=1.2, label="Liquidity %")
+    ax1.set_ylabel("Liquidity %", fontsize=9, color=COLORS["blue_primary"])
+    ax1.tick_params(axis="y", labelcolor=COLORS["blue_primary"], labelsize=8)
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0f}%"))
+    ax1.set_ylim(bottom=0)
+
+    # Right y-axis: Total Assets
+    ax2 = ax1.twinx()
+    ax2.plot(df["hour"], df["total_assets_usd"], color=COLORS["orange"], linewidth=1.0,
+             alpha=0.7, linestyle="--", label="Total Assets")
+    ax2.set_ylabel("Total Assets", fontsize=9, color=COLORS["orange"])
+    ax2.tick_params(axis="y", labelcolor=COLORS["orange"], labelsize=8)
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(usd_formatter))
+
+    # X-axis
+    ax1.tick_params(axis="x", labelsize=8)
+    fig.autofmt_xdate(rotation=0)
+    import matplotlib.dates as mdates
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+    ax1.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+
+    # Title with summary stats
+    avg_liq = df["liquidity_pct"].mean()
+    latest_assets = df["total_assets_usd"].iloc[-1]
+    ax1.set_title(
+        f"{vault_name}  |  Avg Liquidity: {avg_liq:.1f}%  |  Assets: {format_usd(latest_assets)}",
+        fontsize=11, fontweight="bold", color=COLORS["text_white"], pad=12
+    )
+
+    ax1.grid(axis="y", linestyle="--", alpha=0.3)
+    ax1.set_axisbelow(True)
+    ax1.spines["top"].set_visible(False)
+    ax2.spines["top"].set_visible(False)
+
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=200, bbox_inches="tight", facecolor=COLORS["bg_dark"])
+    plt.close(fig)
+    return output_path
+
+
 def create_kpi_card_image(metrics, output_path="chart_kpi_cards.png"):
     """
     Create a set of KPI cards similar to the top stats on data.morpho.org/risk.
@@ -315,6 +373,16 @@ def generate_all_charts(report_data, output_dir="."):
         report_data.get("unrealized_bad_debt", pd.DataFrame()),
         os.path.join(output_dir, "chart_bad_debt.png")
     )
+
+    # 5. Vault liquidity charts
+    vault_liquidity = report_data.get("vault_liquidity", {})
+    charts["vault_charts"] = {}
+    for vault_name, vault_df in vault_liquidity.items():
+        safe_name = vault_name.lower().replace(" ", "_").replace("/", "_")
+        path = os.path.join(output_dir, f"chart_vault_{safe_name}.png")
+        charts["vault_charts"][vault_name] = create_vault_liquidity_chart(
+            vault_name, vault_df, path
+        )
 
     return charts
 
